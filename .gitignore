@@ -1,0 +1,12 @@
+node_modules/
+dist/
+
+*.exe
+*.tgz
+
+*.log
+
+.env
+*.local
+
+venue.config.json
