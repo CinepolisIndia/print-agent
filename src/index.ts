@@ -1,6 +1,7 @@
 import { startSSE } from "./core/sseClient";
 import { logger } from "./utils/logger";
 import { runHealthCheck, startPeriodicHealthCheck } from "./core/healthCheck";
+import { runAutoUpdateCheck } from "./utils/updater";
 
 async function boot() {
   logger.info("Print Agent starting...");
@@ -11,6 +12,8 @@ async function boot() {
   if (health.status === "unhealthy") {
     logger.error("System is unhealthy — will still attempt to start, but printing may fail");
   }
+
+  await runAutoUpdateCheck(logger);
 
   startSSE();
 
