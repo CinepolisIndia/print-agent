@@ -40,7 +40,11 @@ export async function runAutoUpdateCheck(logger?: any) {
       return;
     }
 
-    await downloadAndUpdate(asset.browser_download_url, logger);
+    const updated = await safeDownloadAndUpdate(asset, logger);
+
+    if (!updated) {
+      logger?.warn("Update download failed validation — skipping update, starting normally");
+    }
 
   } catch (err: any) {
     logger?.error("Auto update failed", err.message);
@@ -63,9 +67,9 @@ async function getLatestRelease() {
 }
 
 // ------------------------------
-// DOWNLOAD + UPDATE
+// SAFE DOWNLOAD + UPDATE
 // ------------------------------
-async function downloadAndUpdate(downloadUrl: string, logger?: any) {
+async function safeDownloadAndUpdate(asset: any, logger?: any): Promise<boolean> {
   const exeDir = path.dirname(process.execPath);
 
   const newExePath = path.join(exeDir, "agent-new.exe");
@@ -73,34 +77,51 @@ async function downloadAndUpdate(downloadUrl: string, logger?: any) {
 
   logger?.info("Downloading new version...");
 
-  const writer = fs.createWriteStream(newExePath);
+  try {
+    const writer = fs.createWriteStream(newExePath);
 
-  const response = await axios({
-    url: downloadUrl,
-    method: "GET",
-    responseType: "stream",
-  });
+    const response = await axios({
+      url: asset.browser_download_url,
+      method: "GET",
+      responseType: "stream",
+    });
 
-  response.data.pipe(writer);
+    response.data.pipe(writer);
 
-  await new Promise((resolve, reject) => {
-    writer.on("finish", resolve);
-    writer.on("error", reject);
-  });
+    await new Promise((resolve, reject) => {
+      writer.on("finish", resolve);
+      writer.on("error", reject);
+    });
 
-  logger?.info("Download complete");
+    const actualSize = fs.statSync(newExePath).size;
+    const expectedSize = asset.size;
+
+    if (expectedSize && actualSize !== expectedSize) {
+      logger?.error(`Download size mismatch: expected ${expectedSize} bytes, got ${actualSize} bytes`);
+      fs.unlinkSync(newExePath);
+      return false;
+    }
+
+    logger?.info(`Download verified (${actualSize} bytes)`);
+  } catch (err: any) {
+    logger?.error("Download failed", err.message);
+    if (fs.existsSync(newExePath)) fs.unlinkSync(newExePath);
+    return false;
+  }
 
   createUpdaterScript(updaterPath);
 
   logger?.info("Launching updater...");
 
-  spawn("cmd", ["/c", updaterPath], {
+  const child = spawn("cmd", ["/c", updaterPath], {
     cwd: exeDir,
     detached: true,
     stdio: "ignore",
   });
+  child.unref();
 
   process.exit(0);
+  return true;
 }
 
 // ------------------------------
@@ -108,12 +129,11 @@ async function downloadAndUpdate(downloadUrl: string, logger?: any) {
 // ------------------------------
 function createUpdaterScript(updaterPath: string) {
 
-  const script = `
-@echo off
+  const script = `@echo off
 timeout /t 2 >nul
 taskkill /IM inseat-print-agent.exe /F >nul 2>&1
 copy /Y agent-new.exe inseat-print-agent.exe >nul
-start inseat-print-agent.exe
+start "" inseat-print-agent.exe
 del agent-new.exe
 del updater.bat
 `;
