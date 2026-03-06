@@ -33,7 +33,7 @@ async function checkPrinter(): Promise<CheckDetail> {
 async function checkBackend(): Promise<CheckDetail> {
   const start = Date.now();
   try {
-    const url = `${config.backendUrl}${config.sseEndpoint}?venue_id=${config.venueId}`;
+    const url = `${config.backendUrl}${config.sseEndpoint}?external_id=${config.externalId}`;
     // A simple HEAD/GET to confirm the backend is reachable
     await axios.get(url, {
       timeout: 5000,
@@ -66,8 +66,8 @@ async function checkBackend(): Promise<CheckDetail> {
 
 function checkVenueConfig(): CheckDetail {
   try {
-    if (!config.venueId) {
-      return { ok: false, message: "venueId is missing from venue.config.json" };
+    if (!config.externalId) {
+      return { ok: false, message: "externalId is missing from venue.config.json" };
     }
     if (!config.printer?.interface) {
       return { ok: false, message: "printer.interface is missing from venue.config.json" };
@@ -77,7 +77,7 @@ function checkVenueConfig(): CheckDetail {
     }
     return {
       ok: true,
-      message: `Venue ${config.venueId} — printer ${config.printer.interface} (width ${config.printer.width})`,
+      message: `External ID ${config.externalId} — printer ${config.printer.interface} (width ${config.printer.width})`,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

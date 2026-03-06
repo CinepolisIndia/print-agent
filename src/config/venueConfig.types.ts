@@ -1,5 +1,6 @@
 export interface VenueConfig {
-    venueId: number;
+    external_id?: number;
+    externalId?: number;
     printer: {
       interface: string;
       width: number;

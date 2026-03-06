@@ -5,7 +5,7 @@ export interface PrintJob {
   
   export interface AgentConfig {
     backendUrl: string;
-    venueId: string;
+    externalId: string;
     printerInterface: string;
     printerType: string;
     printerWidth: number;

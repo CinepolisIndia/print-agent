@@ -78,22 +78,16 @@ async function safeDownloadAndUpdate(asset: any, logger?: any): Promise<boolean>
   logger?.info("Downloading new version...");
 
   try {
-    const writer = fs.createWriteStream(newExePath);
-
     const response = await axios({
       url: asset.browser_download_url,
       method: "GET",
-      responseType: "stream",
+      responseType: "arraybuffer",
     });
 
-    response.data.pipe(writer);
+    const buffer = Buffer.from(response.data);
+    fs.writeFileSync(newExePath, buffer);
 
-    await new Promise((resolve, reject) => {
-      writer.on("finish", resolve);
-      writer.on("error", reject);
-    });
-
-    const actualSize = fs.statSync(newExePath).size;
+    const actualSize = buffer.length;
     const expectedSize = asset.size;
 
     if (expectedSize && actualSize !== expectedSize) {
@@ -109,7 +103,7 @@ async function safeDownloadAndUpdate(asset: any, logger?: any): Promise<boolean>
     return false;
   }
 
-  createUpdaterScript(updaterPath);
+  createUpdaterScript(updaterPath, exeDir);
 
   logger?.info("Launching updater...");
 
@@ -121,21 +115,33 @@ async function safeDownloadAndUpdate(asset: any, logger?: any): Promise<boolean>
   child.unref();
 
   process.exit(0);
-  return true;
 }
 
 // ------------------------------
-// UPDATER SCRIPT
+// UPDATER BATCH SCRIPT
 // ------------------------------
-function createUpdaterScript(updaterPath: string) {
+function createUpdaterScript(updaterPath: string, exeDir: string) {
+  const exeFullPath = path.join(exeDir, EXE_NAME).replace(/\//g, "\\");
 
   const script = `@echo off
+cd /d "%~dp0"
+echo [%date% %time%] Updater started >> update.log
+echo [%date% %time%] Working dir: %cd% >> update.log
 timeout /t 2 >nul
-taskkill /IM inseat-print-agent.exe /F >nul 2>&1
-copy /Y agent-new.exe inseat-print-agent.exe >nul
-start "" inseat-print-agent.exe
-del agent-new.exe
-del updater.bat
+taskkill /IM ${EXE_NAME} /F >nul 2>&1
+echo [%date% %time%] Taskkill done >> update.log
+timeout /t 2 >nul
+copy /Y "agent-new.exe" "${EXE_NAME}"
+if errorlevel 1 (
+  echo [%date% %time%] Copy failed >> update.log
+  exit /b 1
+)
+echo [%date% %time%] Copy succeeded >> update.log
+echo [%date% %time%] Launching exe via explorer... >> update.log
+explorer.exe "${exeFullPath}"
+echo [%date% %time%] Launch exited with code %errorlevel% >> update.log
+del "agent-new.exe"
+del "%~f0"
 `;
 
   fs.writeFileSync(updaterPath, script);

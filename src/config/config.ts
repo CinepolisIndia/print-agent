@@ -8,6 +8,6 @@ export const config = {
   sseEndpoint: systemConfig.sseEndpoint,
   ackEndpoint: systemConfig.ackEndpoint,
 
-  venueId: venue.venueId,
+  externalId: venue.cinemaId,
   printer: venue.printer
 };
