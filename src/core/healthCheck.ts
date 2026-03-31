@@ -1,28 +1,61 @@
-import { ThermalPrinter, PrinterTypes, CharacterSet } from "node-thermal-printer";
 import axios from "axios";
 import { config } from "../config/config";
 import { logger } from "../utils/logger";
 import { HealthCheckResult, CheckDetail } from "../types/print.types";
+import {
+  canUseNativeUsbDriver,
+  checkUsbPrinterAvailableViaWindows,
+  createConfiguredPrinter,
+  getUsbPrinterNameFromInterface,
+  normalizePrinterMode
+} from "../printer/epsonPrinter";
 
 // ─── Individual checks ───────────────────────────────────────────────
 
 async function checkPrinter(): Promise<CheckDetail> {
   const start = Date.now();
   try {
-    const printer = new ThermalPrinter({
-      type: PrinterTypes.EPSON,
-      interface: config.printer.interface,
-      width: config.printer.width,
-      characterSet: CharacterSet.PC437_USA,
-      removeSpecialCharacters: false,
-    });
+    const mode = normalizePrinterMode(config.printer?.type);
+    if (!mode) {
+      const latencyMs = Date.now() - start;
+      return {
+        ok: false,
+        message: `Invalid printer.type "${config.printer?.type}" (expected "ip" or "usb"; legacy "epson" accepted as IP)`,
+        latencyMs
+      };
+    }
+    if (mode === "usb" && !canUseNativeUsbDriver()) {
+      const printerName = getUsbPrinterNameFromInterface(config.printer.interface);
+      const connected = await checkUsbPrinterAvailableViaWindows(printerName);
+      const latencyMs = Date.now() - start;
+      return connected
+        ? {
+            ok: true,
+            message: `Printer reachable in USB mode via Windows spooler (${printerName})`,
+            latencyMs
+          }
+        : {
+            ok: false,
+            message: `USB printer "${printerName}" not found in Windows printers`,
+            latencyMs
+          };
+    }
 
+    const { printer, mode: printerMode } = createConfiguredPrinter();
     const connected = await printer.isPrinterConnected();
     const latencyMs = Date.now() - start;
 
     return connected
-      ? { ok: true, message: `Printer reachable at ${config.printer.interface}`, latencyMs }
-      : { ok: false, message: `Printer not responding at ${config.printer.interface}`, latencyMs };
+      ? {
+          ok: true,
+          message: `Printer reachable in ${printerMode.toUpperCase()} mode at ${config.printer.interface}`,
+          latencyMs
+        }
+      : {
+          ok: false,
+          message: `Printer not responding in ${printerMode.toUpperCase()} mode at ${config.printer.interface}`,
+          latencyMs
+        };
   } catch (err) {
     const latencyMs = Date.now() - start;
     const msg = err instanceof Error ? err.message : String(err);
@@ -75,9 +108,23 @@ function checkVenueConfig(): CheckDetail {
     if (!config.printer?.width) {
       return { ok: false, message: "printer.width is missing from venue.config.json" };
     }
+    const mode = normalizePrinterMode(config.printer?.type);
+    if (!mode) {
+      return {
+        ok: false,
+        message:
+          "printer.type is missing/invalid in venue.config.json (expected \"ip\" or \"usb\"; legacy \"epson\" accepted as IP)"
+      };
+    }
+    if (mode === "usb" && !String(config.printer.interface).startsWith("printer:")) {
+      return {
+        ok: false,
+        message: "printer.interface must use Windows printer name format in USB mode: printer:<WindowsPrinterName>"
+      };
+    }
     return {
       ok: true,
-      message: `External ID ${config.externalId} — printer ${config.printer.interface} (width ${config.printer.width})`,
+      message: `External ID ${config.externalId} — ${mode.toUpperCase()} printer ${config.printer.interface} (width ${config.printer.width})`,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
