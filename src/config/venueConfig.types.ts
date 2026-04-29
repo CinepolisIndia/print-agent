@@ -10,5 +10,6 @@ export interface VenueConfig {
   external_id?: number | string;
   externalId?: number | string;
   cinemaId?: number | string;
+  agent_id?: string;
   printer: VenuePrinterConfig;
 }

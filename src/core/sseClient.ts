@@ -6,7 +6,7 @@ import { PrintJob } from "../types/print.types";
 
 export function startSSE() {
   const url =
-    `${config.backendUrl}${config.sseEndpoint}?external_id=${config.externalId}`;
+    `${config.backendUrl}${config.sseEndpoint}?external_id=${config.externalId}&agent_id=${config.agentId}`;
 
   logger.info({ url }, "Connecting SSE");
 

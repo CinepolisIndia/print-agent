@@ -80,7 +80,7 @@ async function checkPrinter(): Promise<CheckDetail> {
 async function checkBackend(): Promise<CheckDetail> {
   const start = Date.now();
   try {
-    const url = `${config.backendUrl}${config.sseEndpoint}?external_id=${config.externalId}`;
+    const url = `${config.backendUrl}${config.sseEndpoint}?external_id=${config.externalId}&agent_id=${config.agentId}`;
     // A simple HEAD/GET to confirm the backend is reachable
     await axios.get(url, {
       timeout: 5000,
@@ -115,6 +115,9 @@ function checkVenueConfig(): CheckDetail {
   try {
     if (!config.externalId) {
       return { ok: false, message: "externalId is missing from venue.config.json" };
+    }
+    if (!config.agentId) {
+      return { ok: false, message: "agent_id is missing from venue.config.json" };
     }
     if (!config.printer?.interface) {
       return { ok: false, message: "printer.interface is missing from venue.config.json" };

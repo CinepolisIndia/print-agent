@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { randomUUID } from "crypto";
 import { VenueConfig } from "./venueConfig.types";
 
 export function loadVenueConfig(): VenueConfig {
@@ -9,5 +10,12 @@ export function loadVenueConfig(): VenueConfig {
     throw new Error("venue.config.json missing beside exe");
   }
 
-  return JSON.parse(fs.readFileSync(file, "utf-8")) as VenueConfig;
+  const venueConfig = JSON.parse(fs.readFileSync(file, "utf-8")) as VenueConfig;
+
+  if (!venueConfig.agent_id) {
+    venueConfig.agent_id = randomUUID();
+    fs.writeFileSync(file, JSON.stringify(venueConfig, null, 2), "utf-8");
+  }
+
+  return venueConfig;
 }
