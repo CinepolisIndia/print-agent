@@ -4,7 +4,7 @@ import { PrinterMode } from "../config/venueConfig.types";
 import { logger } from "../utils/logger";
 import fs from "fs/promises";
 import os from "os";
-import { execFile } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 
 import path from "path";
@@ -12,6 +12,7 @@ import path from "path";
 
 const logoPath = path.join(path.dirname(process.execPath), "assets", "logo.png");
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 export function normalizePrinterMode(rawMode: unknown): PrinterMode | null {
   const normalized = String(rawMode ?? "").trim().toLowerCase();
@@ -102,6 +103,79 @@ export function getUsbPrinterNameFromInterface(interfaceValue: string): string {
 
 function escapePowerShellSingleQuoted(value: string): string {
   return value.replace(/'/g, "''");
+}
+
+export async function isUsbPrinterConnected(printerName: string): Promise<boolean> {
+  try {
+    const wmiCommand = `wmic path Win32_PnPEntity where "DeviceID like 'USB%'" get Name,DeviceID`;
+
+    const { stdout, stderr } = await execAsync(wmiCommand, {
+      windowsHide: true
+    });
+
+    const outputRaw = `${stdout ?? ""}${stderr ?? ""}`;
+    const printerNameLc = String(printerName).toLowerCase();
+
+    // Derive a robust match token from the printer name (e.g. "epson")
+    const tokens = printerNameLc
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 3);
+    const matchToken = tokens[0] ?? printerNameLc;
+
+    const lines = outputRaw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => !!line);
+
+    const outputLower = outputRaw.toLowerCase();
+    const hasUsbVid = outputLower.includes("usb\\vid_");
+    const hasMatchToken = outputLower.includes(matchToken);
+
+    // Primary check: both markers exist somewhere in the WMI output.
+    // WMI/WMIC formatting can split Name and DeviceID across different lines.
+    let usbConnected = hasUsbVid && hasMatchToken;
+
+    // Secondary check: keep the stricter same-line match when possible.
+    for (const line of lines) {
+      const lower = line.toLowerCase();
+      if (lower.includes("usb\\vid_") && lower.includes(matchToken)) {
+        usbConnected = true;
+        break;
+      }
+    }
+
+    logger.info(
+      {
+        printerName,
+        usbConnected,
+        matchToken,
+        hasUsbVid,
+        hasMatchToken,
+        wmiCommand
+      },
+      "USB hardware detection result"
+    );
+
+    logger.info(
+      {
+        printerName,
+        rawWmiOutput: outputRaw
+      },
+      "USB hardware detection WMI output"
+    );
+
+    return usbConnected;
+  } catch (err) {
+    logger.warn(
+      {
+        printerName,
+        err
+      },
+      "USB hardware detection via WMI failed"
+    );
+    return false;
+  }
 }
 
 export async function checkUsbPrinterAvailableViaWindows(

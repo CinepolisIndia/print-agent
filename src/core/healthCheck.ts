@@ -7,6 +7,7 @@ import {
   checkUsbPrinterAvailableViaWindows,
   createConfiguredPrinter,
   getUsbPrinterNameFromInterface,
+  isUsbPrinterConnected,
   normalizePrinterMode
 } from "../printer/epsonPrinter";
 
@@ -26,19 +27,32 @@ async function checkPrinter(): Promise<CheckDetail> {
     }
     if (mode === "usb" && !canUseNativeUsbDriver()) {
       const printerName = getUsbPrinterNameFromInterface(config.printer.interface);
-      const connected = await checkUsbPrinterAvailableViaWindows(printerName);
+      const spoolerAvailable = await checkUsbPrinterAvailableViaWindows(printerName);
+      if (!spoolerAvailable) {
+        const latencyMs = Date.now() - start;
+        return {
+          ok: false,
+          message: `USB printer "${printerName}" not found in Windows printers`,
+          latencyMs
+        };
+      }
+
+      const usbConnected = await isUsbPrinterConnected(printerName);
+      if (!usbConnected) {
+        const latencyMs = Date.now() - start;
+        return {
+          ok: false,
+          message: `USB printer "${printerName}" is physically disconnected`,
+          latencyMs
+        };
+      }
+
       const latencyMs = Date.now() - start;
-      return connected
-        ? {
-            ok: true,
-            message: `Printer reachable in USB mode via Windows spooler (${printerName})`,
-            latencyMs
-          }
-        : {
-            ok: false,
-            message: `USB printer "${printerName}" not found in Windows printers`,
-            latencyMs
-          };
+      return {
+        ok: true,
+        message: `Printer reachable in USB mode via Windows spooler (${printerName})`,
+        latencyMs
+      };
     }
 
     const { printer, mode: printerMode } = createConfiguredPrinter();
@@ -154,6 +168,19 @@ export async function runHealthCheck(): Promise<HealthCheckResult> {
     status = "unhealthy";
   } else {
     status = "degraded";
+  }
+
+  // Fire-and-forget notification when printer is unhealthy
+  if (!printer.ok) {
+    const url = `${config.backendUrl}${config.printerDisconnectedEmailEndpoint}/${config.externalId}/printer-disconnected-email`;
+    axios
+      .post(url, {}, { headers: { "Content-Type": "application/json" } })
+      .then(() => {
+        logger.info({ url }, "Triggered printer-disconnected email notification");
+      })
+      .catch((err) => {
+        logger.warn({ url, err }, "Failed to trigger printer-disconnected email notification");
+      });
   }
 
   const result: HealthCheckResult = {

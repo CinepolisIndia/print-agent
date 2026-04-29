@@ -8,6 +8,7 @@ export const config = {
   backendUrl: systemConfig.backendBaseUrl,
   sseEndpoint: systemConfig.sseEndpoint,
   ackEndpoint: systemConfig.ackEndpoint,
+  printerDisconnectedEmailEndpoint: systemConfig.printerDisconnectedEmailEndpoint,
 
   externalId,
   printer: venue.printer
